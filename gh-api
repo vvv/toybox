@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -eu -o pipefail
+# shopt -s inherit_errexit
+# set -x
+export PS4='+ [${BASH_SOURCE[0]##*/}:${LINENO}${FUNCNAME[0]:+:${FUNCNAME[0]}}] '
+
+owner=elastio
+release_yml_path='.github/workflows/release.yml'
+
+die() {
+    echo "$@" >&2
+    exit 1
+}
+
+set_token() {
+    [[ -n ${GITHUB_TOKEN:-} ]] && return
+
+    if [[ -r /tmp/github.token ]]; then
+        GITHUB_TOKEN=$(cat /tmp/github.token)
+    else
+        cat >&2 <<'EOF'
+GitHub access token is not available.
+
+Set 'GITHUB_TOKEN' environment variable or provide '/tmp/github.token' file.
+See https://docs.github.com/en/rest/overview/other-authentication-methods#via-oauth-and-personal-access-tokens
+EOF
+        exit 1
+    fi
+}
+
+_curl() {
+    local url=$1
+    local extra_opts=${2:-}
+
+    curl -sSf \
+        -u "$(id -u):$GITHUB_TOKEN" \
+        -H 'Accept: application/vnd.github.v3+json' \
+        $extra_opts \
+        https://api.github.com$url
+}
+
+cache_path() {
+    case "$*" in
+        repos|workflows)
+            echo "/tmp/_cache-$1"
+            ;;
+        *)
+            die "${FUNCNAME[0]}: Invalid usage"
+            ;;
+    esac
+}
+
+list_repos() {
+    # Read from the cache, if available
+    local cache
+    cache=$(cache_path repos)
+    if [[ -f $cache ]]; then
+        cat $cache
+        return
+    fi
+
+    local nr_pages
+    nr_pages=$(
+        _curl /orgs/$owner/repos -I |
+            sed -En 's/^link: .*\?page=([0-9]+)>; rel="last".*$/\1/p'
+    )
+    for page in $(seq $nr_pages); do
+        _curl /orgs/$owner/repos?page=$page | jq --raw-output 'map(.name) | .[]'
+    done | sort | tee $cache
+}
+
+list_workflows() {
+    # Read from the cache, if available
+    local cache
+    cache=$(cache_path workflows)
+    if [[ -f $cache ]]; then
+        cat $cache
+        return
+    fi
+
+    local repo
+    while read -r repo; do
+        # See https://docs.github.com/en/rest/reference/actions#list-workflow-runs-for-a-repository
+        _curl /repos/$owner/$repo/actions/workflows |
+            jq --compact-output --arg repo $repo '
+if .workflows == [] then
+    empty
+else
+    {repo: $repo, workflows: .workflows | map(.path)}
+end
+'
+    done < <(list_repos) | jq --slurp . | tee $cache
+}
+
+repos_with_release_workflow() {
+    list_workflows | jq --raw-output --arg path $release_yml_path '
+def contains_release:
+    .workflows | contains([$path]);
+
+map(if contains_release then .repo else empty end) | .[]
+'
+}
+
+get_content() {
+    local repo=$1
+    local file_path=$2
+
+    # https://docs.github.com/en/rest/reference/repos#get-repository-content
+    _curl /repos/$owner/$repo/contents/$file_path |
+        jq -r '.content | split("\n") | map(@base64d) | join("") | .[:-1]'
+}
+
+main() {
+    set_token
+
+    local out_dir=/tmp/_release-workflows
+    rm -rf $out_dir
+    mkdir -p $out_dir
+
+    local repo
+    while read -r repo; do
+        get_content $repo $release_yml_path > $out_dir/$repo.yml
+    done < <(repos_with_release_workflow)
+
+    sha256sum $out_dir/* | sort
+}
+
+main "$@"
