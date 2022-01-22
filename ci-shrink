@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -eu -o pipefail
+# set -x
+export PS4='+ [${BASH_SOURCE[0]##*/}:${LINENO}${FUNCNAME[0]:+:${FUNCNAME[0]}}] '
+
+prog="${0##*/}"
+default_workflow='cicd-pr.yml'
+
+usage() {
+    cat <<EOF
+Leave a single CI job in the workflow.
+
+Usage: $prog [--commit] [--workflow <filename>] <job-id>
+
+Options:
+        --commit                Commit the result.
+    -h, --help                  Show this help and exit.
+    -w, --workflow <filename>   Name of the workflow file in '.github/workflows/' directory
+                                (default: '$default_workflow').
+
+Example:
+    $prog --commit rust-test-on-stable
+EOF
+}
+
+opt_commit=false
+opt_workflow=$default_workflow
+opt_job=
+
+optparse() {
+    local temp
+    temp=$(getopt -o h,w: --long commit,help,workflow: --name "$prog" -- "$@")
+    eval set -- "$temp"
+
+    while true; do
+        case "$1" in
+            -h|--help)
+                usage
+                exit
+                ;;
+            --commit)
+                opt_commit=true
+                ;;
+            -w|--workflow)
+                opt_workflow="$2"
+                shift
+                ;;
+            --)
+                shift
+                break
+                ;;
+            *)
+                die "[$prog:$LINENO] BUG"  # unreachable
+                ;;
+        esac
+        shift
+    done
+
+    (( $# == 1 )) || die "Wrong number of arguments. Type '$prog --help' for usage."
+    opt_job="$1"
+}
+
+die() {
+    echo "$@" >&2
+    exit 1
+}
+
+check_deps() {
+    if ! [[ -n $(type -p rq) ]]; then
+        cat >&2 <<'EOF'
+**ERROR** 'rq' is not installed
+Follow the instructions at https://github.com/dflemstr/rq/blob/master/doc/installation.md
+EOF
+        exit 1
+    fi
+
+    if ! [[ -n $(type -p jq) ]]; then
+        cat <<EOF >&2
+**ERROR** 'jq' is not installed
+Please install 'jq' package.
+EOF
+        exit 1
+    fi
+}
+
+main() {
+    check_deps
+    optparse "$@"
+
+    cd $(git rev-parse --show-toplevel)  # XXX What if we're not in a git repo?
+
+    workflow=".github/workflows/$opt_workflow"
+    git show origin/master:$workflow |
+        rq --input-yaml |
+        jq --arg job_id "$opt_job" '
+            (.jobs[$job_id] + {needs: []}) as $job |
+            . + {jobs: {($job_id): $job}}
+        ' |
+        rq --output-yaml |
+        if $opt_commit; then
+            cat > $workflow
+            git add $workflow
+            git commit --no-verify \
+                -m "XXX DELETEME $opt_workflow: Delete every job but $opt_job"
+        else
+            cat
+        fi
+}
+
+main "$@"
