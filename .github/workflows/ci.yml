@@ -1,6 +1,3 @@
-# name: CI
-name: w.ci
-
 on:
   pull_request:
   push:
@@ -13,10 +10,9 @@ jobs:
     steps:
       # - uses: actions/checkout@v2
       - run: echo 'Hello, world!'
-  boo:
-    name: w.ci.j.boo
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo 'Boo! 👻'
   # boo:
-  #   uses: vvv/toybox/.github/workflows/reusable.boo.yml@main
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - run: echo 'Boo! 👻'
+  boo:
+    uses: vvv/toybox/.github/workflows/reusable.boo.yml@main
