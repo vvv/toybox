@@ -1,9 +1,12 @@
+name: r.w.boo
+
 on:
   # See https://docs.github.com/en/actions/using-workflows/reusing-workflows
   workflow_call:
 
 jobs:
-  foo:
+  boo:
+    name: r.w.boo.j.boo
     runs-on: ubuntu-latest
     steps:
       - run: echo 'Boo! 👻'
