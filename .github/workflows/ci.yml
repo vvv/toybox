@@ -1,16 +1,21 @@
 # name: CI
 
 on:
-  # push:
-  #   branches: [ main ]
   pull_request:
-    # branches: [ main ]
+  push:
+    branches: [ main ]
 
-  workflow_dispatch:
+  # workflow_dispatch:
 
 jobs:
-  build:
+  hello:
     runs-on: ubuntu-latest
     steps:
       # - uses: actions/checkout@v2
       - run: echo 'Hello, world!'
+  boo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Boo! 👻'
+  # boo:
+  #   uses: vvv/toybox/.github/workflows/reusable.boo.yml@main
