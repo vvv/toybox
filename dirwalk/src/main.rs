@@ -6,19 +6,18 @@ fn walk(root: &str) -> Result<(), ()> {
     WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| !e.file_type().is_dir())
-        .enumerate()
-        .take_while(|(line, entry)| {
-            let path = entry.path();
+        .take_while(|e| {
+            let path = e.path();
             if path == prev.as_path() {
-                eprintln!("**ERROR** The same input line appears twice in a row. Aborting.");
-                eprintln!("[Line {}] {:?}", line, path);
+                eprintln!("**ERROR** The same path appears two times in a row. Aborting.");
+                eprintln!("{:?}", path);
                 return false;
             }
             prev = path.to_path_buf();
             true
         })
-        .for_each(|(_, entry)| println!("{}", entry.path().display()));
+        .filter(|e| !e.file_type().is_dir())
+        .for_each(|e| println!("{}", e.path().display()));
     Ok(())
 }
 
