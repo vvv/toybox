@@ -1,7 +1,8 @@
+use std::path::PathBuf;
 use walkdir::WalkDir;
 
 fn walk(root: &str) -> Result<(), ()> {
-    let mut prev = None;
+    let mut prev = PathBuf::new();
     WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -9,13 +10,12 @@ fn walk(root: &str) -> Result<(), ()> {
         .enumerate()
         .take_while(|(line, entry)| {
             let path = entry.path();
-            if let Some(prev) = prev.replace(path.to_path_buf()) {
-                if prev == path {
-                    eprintln!("**ERROR** The same input line appears twice in a row. Aborting.");
-                    eprintln!("[Line {}] {:?}", line, path);
-                    return false;
-                }
+            if path == prev.as_path() {
+                eprintln!("**ERROR** The same input line appears twice in a row. Aborting.");
+                eprintln!("[Line {}] {:?}", line, path);
+                return false;
             }
+            prev = path.to_path_buf();
             true
         })
         .for_each(|(_, entry)| println!("{}", entry.path().display()));
